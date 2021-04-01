@@ -50,7 +50,16 @@ class ProcessInfo:
         self.total_progress = 0
 
         logger.info('Init TaskModel %s', self)
+    
+    def update_total(self, total):
+        """Updates total
 
+        :param total: total
+        :type total: int
+        """
+
+        TaskModel.objects.filter(task_id=self.task.id).update(total=total)
+        
     def update(self, n=1):
         """
         Create a TaskProgressModel instance to main and sub tasks
