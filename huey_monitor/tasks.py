@@ -5,6 +5,7 @@ import sys
 import threading
 import traceback
 import uuid
+import multiprocessing
 from functools import lru_cache
 
 from django.db import transaction
@@ -73,17 +74,19 @@ def startup_handler():
     """
     logger.debug('startup handler called')
 
-    with transaction.atomic():
-        qs = TaskModel.objects.filter(state__signal_name='executing')
-        for task_model_instance in qs:
-            logger.warning('Mark "executing" task %s to "unknown"', task_model_instance.pk)
-            last_signal = SignalInfoModel.objects.create(
-                # TODO: move parts into huey_monitor.models.SignalInfoManager
-                hostname=get_hostname(),
-                pid=os.getpid(),
-                thread=threading.current_thread().name,
-                task_id=task_model_instance.pk,
-                signal_name='unknown',
-            )
-            task_model_instance.state_id = last_signal.pk
-            task_model_instance.save(update_fields=('state_id',))
+    if multiprocessing.current_process().name == 'Worker-1':
+
+        with transaction.atomic():
+            qs = TaskModel.objects.filter(state__signal_name='executing')
+            for task_model_instance in qs:
+                logger.warning('Mark "executing" task %s to "unknown"', task_model_instance.pk)
+                last_signal = SignalInfoModel.objects.create(
+                    # TODO: move parts into huey_monitor.models.SignalInfoManager
+                    hostname=get_hostname(),
+                    pid=os.getpid(),
+                    thread=threading.current_thread().name,
+                    task_id=task_model_instance.pk,
+                    signal_name='unknown',
+                )
+                task_model_instance.state_id = last_signal.pk
+                task_model_instance.save(update_fields=('state_id',))
