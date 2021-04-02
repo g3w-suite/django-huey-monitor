@@ -39,6 +39,9 @@ class ProcessInfo:
         self.unit = unit
         self.unit_divisor = unit_divisor
         self.parent_task_id = parent_task_id
+        
+        # Make sure the model exists (hit by a test case)
+        TaskModel.objects.get_or_create(task_id=task.id)
 
         TaskModel.objects.filter(task_id=task.id).update(
             desc=self.desc,
