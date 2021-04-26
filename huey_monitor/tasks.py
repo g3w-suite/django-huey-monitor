@@ -12,7 +12,7 @@ from django.db import transaction
 from huey.contrib.djhuey import on_startup, signal
 
 from huey_monitor.models import SignalInfoModel, TaskModel
-
+from django.db import connection
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,9 @@ def store_signals(signal, task, exc=None):
         signal_kwargs['exception'] = ''.join(
             traceback.format_exception(*sys.exc_info())
         )
+    
+    # Fixes: SSL error: decryption failed or bad record mac
+    connection.close()
 
     with transaction.atomic():
         task_model_instance, created = TaskModel.objects.get_or_create(
