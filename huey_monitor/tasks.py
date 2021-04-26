@@ -12,7 +12,9 @@ from django.db import transaction
 from huey.contrib.djhuey import on_startup, signal
 
 from huey_monitor.models import SignalInfoModel, TaskModel
+
 from django.db import connection
+from django.db import close_old_connections
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +45,27 @@ def store_signals(signal, task, exc=None):
         signal_kwargs['exception'] = ''.join(
             traceback.format_exception(*sys.exc_info())
         )
-    
+
+    def _store():
+        with transaction.atomic():
+            task_model_instance, created = TaskModel.objects.get_or_create(
+                task_id=task_id,
+                defaults={'name': task.name}
+            )
+
+            signal_kwargs['task'] = task_model_instance
+
+            last_signal = SignalInfoModel.objects.create(**signal_kwargs)
+
+            task_model_instance.state_id = last_signal.pk
+            task_model_instance.save(update_fields=('state_id',))
+
     # Fixes: SSL error: decryption failed or bad record mac
-    connection.close()
-
-    with transaction.atomic():
-        task_model_instance, created = TaskModel.objects.get_or_create(
-            task_id=task_id,
-            defaults={'name': task.name}
-        )
-
-        signal_kwargs['task'] = task_model_instance
-
-        last_signal = SignalInfoModel.objects.create(**signal_kwargs)
-
-        task_model_instance.state_id = last_signal.pk
-        task_model_instance.save(update_fields=('state_id',))
+    try:
+        _store()
+    except:
+        connection.close()
+        _store()
 
 
 @on_startup()
@@ -82,7 +89,8 @@ def startup_handler():
         with transaction.atomic():
             qs = TaskModel.objects.filter(state__signal_name='executing')
             for task_model_instance in qs:
-                logger.warning('Mark "executing" task %s to "unknown"', task_model_instance.pk)
+                logger.warning(
+                    'Mark "executing" task %s to "unknown"', task_model_instance.pk)
                 last_signal = SignalInfoModel.objects.create(
                     # TODO: move parts into huey_monitor.models.SignalInfoManager
                     hostname=get_hostname(),
@@ -93,3 +101,4 @@ def startup_handler():
                 )
                 task_model_instance.state_id = last_signal.pk
                 task_model_instance.save(update_fields=('state_id',))
+
